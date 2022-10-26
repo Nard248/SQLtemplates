@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS #gp
         gp.GameProviderName
 	INTO #gp
 	FROM C_GameProvider gp
+
 DROP TABLE IF EXISTS #a
 	SELECT #cg.GameID, 
         #cg.Name_en, 
@@ -24,54 +25,49 @@ DROP TABLE IF EXISTS #a
 	FROM #cg
 	LEFT JOIN #gc ON #cg.GameCategoryID = #gc.GameCategoryID
 	LEFT JOIN #gp ON #cg.GameProviderID = #gp.GameProviderID
-
-
+	
 DROP TABLE IF EXISTS #cas
 	SELECT u.PartnerUserID, 
-        a.CalculationDate_DT as order_Date,
-        count(a.OrderID) as BetCount, 
+        count(a.UserID) as BetCount, 
         a.BetAmount, 
-        SUM(a.GGR) as GGR,
         g.GameID
 	INTO #cas
 	FROM (
 		SELECT o.UserID, 
             o.GameID, 
-			o.OrderID,
-            o.CalculationDate_DT,
-            CASE WHEN cg.GameProviderID IN (48, 10) AND o.TypeId IN (1, 5, 8, 18, 33) THEN o.OrderAmount 
-            WHEN cg.GameProviderID NOT IN (48, 10) THEN o.OrderAmount ELSE 0 END AS BetAmount,
-
-            CASE WHEN cg.GameProviderID IN (48, 10) AND o.TypeId = 1 THEN o.OrderAmount * o.Odds / 100 
-            WHEN cg.GameProviderID IN (48, 10) AND o.TypeId IN (5, 8, 18, 33) THEN (o.OrderAmount - o.WinAmount) 
-            WHEN cg.GameProviderID NOT IN (48, 10) THEN (o.OrderAmount - o.WinAmount) 
-            ELSE 0 END GGR
+            (CASE WHEN o.CalculationDate < '2021-03-01' THEN o.OrderAmount ELSE 
+                CASE WHEN cg.GameProviderID IN (48, 10) AND o.TypeId IN (1, 5, 8, 18, 33) THEN o.OrderAmount 
+                WHEN cg.GameProviderID NOT IN (48, 10) THEN o.OrderAmount ELSE 0 END END) AS BetAmount
 		FROM casino.orders o
 		INNER JOIN C_Game cg ON cg.GameID = o.GameID
-		WHERE o.CalculationDate_DT >= '2022-10-01' AND o.CalculationDate < DATEADD(DAY, -1, CAST(GETDATE() AS DATE))
-			AND o.DeviceTypeID = 12
-            AND o.OrderStateID NOT IN (1, 4, 7)
+		INNER JOIN VIEW_PlatformPartnerUsers_TotogamingAm u ON o.UserID = u.UserID
+		INNER JOIN C_GameProvider gp ON gp.GameProviderID = cg.GameProviderID
+		WHERE 
+		    o.CalculationDate <= CAST(DATEADD(MONTH, 6, CAST(u.RegistrationDate AS DATE)) AS Date)
+			AND gp.GameProviderName <> 'Digitain'
+			AND o.OrderStateID NOT IN (1, 4, 7)
 			AND o.OperationTypeID IN (3, 299)
 			AND CASE WHEN cg.GameProviderID IN (48, 10)
-            THEN o.TypeId ELSE 0 END IN (0, 1, 5, 8, 18, 33)
+			AND o.CalculationDate < '2021-03-01' THEN o.TypeId ELSE 0 END IN (0, 1, 5, 8, 18, 33)
 		) a
 	INNER JOIN C_Game g ON g.GameID = a.GameID
 	INNER JOIN VIEW_PlatformPartnerUsers_TotogamingAm u ON u.UserID = a.UserID
+	WHERE u.isDeleted = 0
+		AND u.PartnerUserID = 100377571
+        AND u.PartnerID = 237
+		AND u.UserTypeID NOT IN (1, 20, 3, 21)
+		AND u.UserName NOT LIKE 'test%'
+		AND u.UserName NOT LIKE '%TestClient%'
 	GROUP BY u.PartnerUserID, 
-        a.CalculationDate_DT,
         a.BetAmount, 
         g.GameID
+		
 
-SELECT * FROM #cas
 
-
-SELECT #cas.PartnerUserId, 
-    #cas.order_Date,
-    SUM(#cas.BetCount) AS BetCount, 
-    SUM(#cas.BetAmount) AS BetAmount, 
-    SUM(#cas.GGR) AS GGR,
-    #b.Type,
-    #b.GameProviderName
+SELECT * FROM (SELECT #cas.PartnerUserId AS TOTOID, 
+    #cas.BetCount AS Bet_count, 
+    #cas.BetAmount AS Bet_amount, 
+    #b.Type AS Category
 FROM #cas
 LEFT JOIN (SELECT *, 
         (
@@ -205,8 +201,19 @@ LEFT JOIN (SELECT *,
 					AND #a.Name_en LIKE '%European Roulette%'
 					THEN 'Slots'
 				ELSE 'Other'
-                END
+				END
 		) Type
 	FROM #a ) #b ON #cas.GameID = #b.GameID
-GROUP BY PartnerUserId, order_Date, Type, GameProviderName
-ORDER BY PartnerUserId
+	GROUP BY #cas.PartnerUserId, #b.Type
+UNION ALL 
+
+SELECT u.PartnerUserID AS TOTOID, COUNT(o.OrderID) AS Order_count, SUM(o.OrderAmount) AS Order_amount, 'Sports' AS Category
+FROM VIEW_sport_PartnerUser_TotogamingAm u
+INNER JOIN VIEW_sport_Orders_TotogamingAm o ON o.UserID = u.UserID
+WHERE o.OrderDate_DT <= CAST(DATEADD(MONTH, 6, CAST(u.RegistrationDate AS DATE)) AS Date)
+AND o.OrderStateID NOT IN (1, 4, 7)
+AND u.UserTypeID NOT IN (1, 20, 3, 21)
+AND u.UserName NOT LIKE 'test%'
+AND u.UserName NOT LIKE '%TestClient%'GROUP BY u.PartnerUserId
+) AS bc
+ORDER BY bc.TOTOID 

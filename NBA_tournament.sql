@@ -12,17 +12,17 @@ SELECT
     o.OrderID
 INTO #nba_checks
 FROM
-    dwOper.dbo.VIEW_sport_OrdersBetsStakes_TotogamingAm o --Bet Stakes with large opening
-    LEFT JOIN dwOper.sport.CashoutHistory h on h.OrderID = o.OrderID -- Cashout 
+    dwOper.dbo.VIEW_sport_OrdersBetsStakes_TotogamingAm o
+    LEFT JOIN dwOper.sport.CashoutHistory h on h.OrderID = o.OrderID 
 WHERE 
     o.OrderDate >= @startdate AND o.OrderDate <= @enddate
 AND o.CalculationDate >= @startdate AND o.CalculationDate <= @enddate
 AND o.OrderStateID NOT IN (1, 4, 7)
 AND o.BetCategoryID IN (1, 3)
-AND o.TournamentID = 1 -- NBA
-AND o.IsInternet = 1  --Internet users
-AND h.CashoutId is NULL --No Cashout
-AND o.UserBonusID is NULL --No Bonus
+AND o.TournamentID = 1 
+AND o.IsInternet = 1
+AND h.CashoutId is NULL
+AND o.UserBonusID is NULL
 GROUP BY o.OrderID
 
 DROP TABLE IF EXISTS #final_checks
@@ -54,7 +54,6 @@ WHERE
 GROUP BY 
     u.PartnerUserId
 
--- SELECT * FROM #User_Days
 
 DROP TABLE IF EXISTS #almost_full
 SELECT 
@@ -74,8 +73,6 @@ GROUP BY
     u.PartnerUserId, o.OrderID
 ORDER BY 
     u.PartnerUserId
--- HAVING  
---     SUM(o.winamount) - SUM(o.StakeAmount) > 0
 
 SELECT a.PartnerUserId, SUM(Points) * MAX(#User_Days.count_of_days) AS Points, SUM(Points) AS Win_points, MAX(#User_Days.count_of_days) AS Days
 FROM 
@@ -83,4 +80,4 @@ FROM
 INNER JOIN #User_Days  ON #User_Days.PartnerUserId = a.PartnerUserId
 WHERE a.Pure_Win > 0
 GROUP BY a.PartnerUserId
--- SELECT count_of_days FROM #User_Days
+

@@ -26,7 +26,6 @@ DROP TABLE IF EXISTS #a
 	LEFT JOIN #gc ON #cg.GameCategoryID = #gc.GameCategoryID
 	LEFT JOIN #gp ON #cg.GameProviderID = #gp.GameProviderID
 	
---Casino BETS
 DROP TABLE IF EXISTS #cas
 	SELECT u.PartnerUserID, 
         count(*) as BetCount, 
@@ -41,10 +40,13 @@ DROP TABLE IF EXISTS #cas
                 WHEN cg.GameProviderID NOT IN (48, 10) THEN o.OrderAmount ELSE 0 END END) AS BetAmount
 		FROM casino.orders o
 		INNER JOIN C_Game cg ON cg.GameID = o.GameID
-		WHERE o.CalculationDate >= '2022-09-01'
-		    AND o.CalculationDate<'2022-09-21'
+		INNER JOIN VIEW_PlatformPartnerUsers_TotogamingAm u ON o.UserID = u.UserID
+		INNER JOIN C_GameProvider gp ON gp.GameProviderID = cg.GameProviderID
+		WHERE 
+		    o.CalculationDate <= CAST(DATEADD(MONTH, 6, CAST(u.RegistrationDate AS DATE)) AS Date)
+			AND gp.GameProviderName <> 'Digitain'
 			AND o.OrderStateID NOT IN (1, 4, 7)
-			AND o.OperationTypeID IN (3)
+			AND o.OperationTypeID IN (3, 299)
 			AND CASE WHEN cg.GameProviderID IN (48, 10)
 			AND o.CalculationDate < '2021-03-01' THEN o.TypeId ELSE 0 END IN (0, 1, 5, 8, 18, 33)
 		) a
@@ -59,19 +61,13 @@ DROP TABLE IF EXISTS #cas
         a.BetAmount, 
         g.GameID
 		
-		
 
 
-
-
-
-
-
-SELECT #cas.PartnerUserId, 
-    #cas.BetCount, 
-    #cas.BetAmount, 
-    #b.Type,
-    #b.GameProviderName
+SELECT * FROM (SELECT #cas.PartnerUserId AS TOTOID, 
+    SUM(#cas.BetCount) AS Bet_count, 
+    SUM(#cas.BetAmount) AS Bet_amount, 
+    #b.Type AS Category
+    -- #b.GameProviderName
 FROM #cas
 LEFT JOIN (SELECT *, 
         (
@@ -208,5 +204,17 @@ LEFT JOIN (SELECT *,
 				END
 		) Type
 	FROM #a ) #b ON #cas.GameID = #b.GameID
-	Where #b.Type='Slots'
-ORDER BY 1 
+	GROUP BY #cas.PartnerUserId, #b.Type
+
+UNION ALL 
+
+SELECT u.PartnerUserID AS TOTOID, COUNT(o.OrderID) AS Order_count, SUM(o.OrderAmount) AS Order_amount, 'Sports' AS Category
+FROM VIEW_sport_PartnerUser_TotogamingAm u
+INNER JOIN VIEW_sport_Orders_TotogamingAm o ON o.UserID = u.UserID
+WHERE o.OrderDate_DT <= CAST(DATEADD(MONTH, 6, CAST(u.RegistrationDate AS DATE)) AS Date)
+AND o.OrderStateID NOT IN (1, 4, 7)
+AND u.UserTypeID NOT IN (1, 20, 3, 21)
+AND u.UserName NOT LIKE 'test%'
+AND u.UserName NOT LIKE '%TestClient%'
+GROUP BY u.PartnerUserId) AS bc
+ORDER BY bc.TOTOID 
